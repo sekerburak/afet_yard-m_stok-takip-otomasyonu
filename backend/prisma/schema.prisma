@@ -1,0 +1,212 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model araclar {
+  id             Int           @id @default(autoincrement())
+  plaka          String        @unique @db.VarChar(20)
+  arac_tipi      String        @db.VarChar(20)
+  kapasite_kg    Int?
+  surucu_adi     String?       @db.VarChar(100)
+  surucu_telefon String?       @db.VarChar(20)
+  durum          String        @default("MUSAIT") @db.VarChar(20)
+  aktif          Boolean       @default(true)
+  sevkiyatlar    sevkiyatlar[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model bolgeler {
+  id               Int          @id @default(autoincrement())
+  ad               String       @unique @db.VarChar(100)
+  il               String       @db.VarChar(50)
+  ilce             String?      @db.VarChar(50)
+  afet_turu        String       @db.VarChar(20)
+  enlem            Decimal?     @db.Decimal(9, 6)
+  boylam           Decimal?     @db.Decimal(9, 6)
+  aktif            Boolean      @default(true)
+  olusturma_tarihi DateTime     @default(now()) @db.Timestamptz(6)
+  ihtiyaclar       ihtiyaclar[]
+}
+
+model denetim_kayitlari {
+  id           Int           @id @default(autoincrement())
+  kullanici_id Int?
+  islem_turu   String        @db.VarChar(50)
+  tablo_adi    String        @db.VarChar(50)
+  kayit_id     Int?
+  eski_veri    Json?
+  yeni_veri    Json?
+  islem_tarihi DateTime      @default(now()) @db.Timestamptz(6)
+  kullanicilar kullanicilar? @relation(fields: [kullanici_id], references: [id], onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model depo_stoklari {
+  id                Int        @id @default(autoincrement())
+  depo_id           Int
+  malzeme_id        Int
+  miktar            Int        @default(0)
+  guncelleme_tarihi DateTime   @default(now()) @db.Timestamptz(6)
+  depolar           depolar    @relation(fields: [depo_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  malzemeler        malzemeler @relation(fields: [malzeme_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([depo_id, malzeme_id])
+}
+
+model depolar {
+  id                       Int                        @id @default(autoincrement())
+  ad                       String                     @unique @db.VarChar(100)
+  il                       String                     @db.VarChar(50)
+  ilce                     String?                    @db.VarChar(50)
+  adres                    String?
+  enlem                    Decimal?                   @db.Decimal(9, 6)
+  boylam                   Decimal?                   @db.Decimal(9, 6)
+  sorumlu_id               Int?
+  aktif                    Boolean                    @default(true)
+  olusturma_tarihi         DateTime                   @default(now()) @db.Timestamptz(6)
+  depo_stoklari            depo_stoklari[]
+  kullanicilar             kullanicilar?              @relation(fields: [sorumlu_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  kullanici_depo_yetkileri kullanici_depo_yetkileri[]
+  sevkiyatlar              sevkiyatlar[]
+  stok_hareketleri         stok_hareketleri[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model ihtiyac_kalemleri {
+  id                  Int        @id @default(autoincrement())
+  ihtiyac_id          Int
+  malzeme_id          Int
+  talep_edilen_miktar Int
+  karsilanan_miktar   Int        @default(0)
+  ihtiyaclar          ihtiyaclar @relation(fields: [ihtiyac_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  malzemeler          malzemeler @relation(fields: [malzeme_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([ihtiyac_id, malzeme_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model ihtiyaclar {
+  id                Int                 @id @default(autoincrement())
+  bolge_id          Int
+  olusturan_id      Int
+  aciliyet          String              @db.VarChar(10)
+  durum             String              @default("BEKLEMEDE") @db.VarChar(20)
+  aciklama          String?
+  olusturma_tarihi  DateTime            @default(now()) @db.Timestamptz(6)
+  guncelleme_tarihi DateTime            @default(now()) @db.Timestamptz(6)
+  ihtiyac_kalemleri ihtiyac_kalemleri[]
+  bolgeler          bolgeler            @relation(fields: [bolge_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  kullanicilar      kullanicilar        @relation(fields: [olusturan_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sevkiyatlar       sevkiyatlar[]
+}
+
+model kullanici_depo_yetkileri {
+  kullanici_id Int
+  depo_id      Int
+  depolar      depolar      @relation(fields: [depo_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  kullanicilar kullanicilar @relation(fields: [kullanici_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([kullanici_id, depo_id])
+}
+
+model kullanicilar {
+  id                       Int                        @id @default(autoincrement())
+  ad_soyad                 String                     @db.VarChar(100)
+  eposta                   String                     @unique @db.VarChar(150)
+  sifre_hash               String
+  rol_id                   Int
+  aktif                    Boolean                    @default(true)
+  olusturma_tarihi         DateTime                   @default(now()) @db.Timestamptz(6)
+  denetim_kayitlari        denetim_kayitlari[]
+  depolar                  depolar[]
+  ihtiyaclar               ihtiyaclar[]
+  kullanici_depo_yetkileri kullanici_depo_yetkileri[]
+  roller                   roller                     @relation(fields: [rol_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sevkiyatlar              sevkiyatlar[]
+  stok_hareketleri         stok_hareketleri[]
+}
+
+model malzeme_kategorileri {
+  id         Int          @id @default(autoincrement())
+  ad         String       @unique @db.VarChar(50)
+  aciklama   String?
+  malzemeler malzemeler[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model malzemeler {
+  id                   Int                  @id @default(autoincrement())
+  ad                   String               @unique @db.VarChar(100)
+  kategori_id          Int
+  birim                String               @db.VarChar(20)
+  kritik_stok_seviyesi Int                  @default(0)
+  aktif                Boolean              @default(true)
+  depo_stoklari        depo_stoklari[]
+  ihtiyac_kalemleri    ihtiyac_kalemleri[]
+  malzeme_kategorileri malzeme_kategorileri @relation(fields: [kategori_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sevkiyat_kalemleri   sevkiyat_kalemleri[]
+  stok_hareketleri     stok_hareketleri[]
+}
+
+model roller {
+  id           Int            @id @default(autoincrement())
+  ad           String         @unique @db.VarChar(50)
+  aciklama     String?
+  aktif        Boolean        @default(true)
+  kullanicilar kullanicilar[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model sevkiyat_kalemleri {
+  id                   Int         @id @default(autoincrement())
+  sevkiyat_id          Int
+  malzeme_id           Int
+  miktar               Int
+  teslim_edilen_miktar Int         @default(0)
+  olusturma_tarihi     DateTime    @default(now()) @db.Timestamptz(6)
+  malzemeler           malzemeler  @relation(fields: [malzeme_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sevkiyatlar          sevkiyatlar @relation(fields: [sevkiyat_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model sevkiyatlar {
+  id                 Int                  @id @default(autoincrement())
+  ihtiyac_id         Int
+  kaynak_depo_id     Int
+  arac_id            Int?
+  olusturan_id       Int
+  durum              String               @default("HAZIRLANIYOR") @db.VarChar(20)
+  cikis_tarihi       DateTime?            @db.Timestamptz(6)
+  teslim_tarihi      DateTime?            @db.Timestamptz(6)
+  aciklama           String?
+  olusturma_tarihi   DateTime             @default(now()) @db.Timestamptz(6)
+  sevkiyat_kalemleri sevkiyat_kalemleri[]
+  araclar            araclar?             @relation(fields: [arac_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  ihtiyaclar         ihtiyaclar           @relation(fields: [ihtiyac_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  depolar            depolar              @relation(fields: [kaynak_depo_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  kullanicilar       kullanicilar         @relation(fields: [olusturan_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  stok_hareketleri   stok_hareketleri[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model stok_hareketleri {
+  id           Int          @id @default(autoincrement())
+  depo_id      Int
+  malzeme_id   Int
+  hareket_tipi String       @db.VarChar(10)
+  miktar       Int
+  kullanici_id Int
+  aciklama     String?
+  tarih        DateTime     @default(now()) @db.Timestamptz(6)
+  sevkiyat_id  Int?
+  depolar      depolar      @relation(fields: [depo_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  kullanicilar kullanicilar @relation(fields: [kullanici_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  malzemeler   malzemeler   @relation(fields: [malzeme_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sevkiyatlar  sevkiyatlar? @relation(fields: [sevkiyat_id], references: [id], onUpdate: NoAction)
+}
