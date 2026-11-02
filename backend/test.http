@@ -1,0 +1,142 @@
+### ==========================================
+### 1. ALTYAPI TABLOLARI (Önce Bunları Çalıştır)
+### ==========================================
+
+### 1. Tüm Depoları Listele (GET)
+GET http://localhost:3000/api/depolar
+
+### 2. Yeni Depo Ekle (POST)
+POST http://localhost:3000/api/depolar
+Content-Type: application/json
+
+{
+  "ad": "Merkez Afet Deposu 2",
+  "il": "Malatya",
+  "ilce": "Yeşilyurt",
+  "adres": "Organize Sanayi Bölgesi 2. Cadde",
+  "enlem": 38.355,
+  "boylam": 38.333
+}
+
+### 3. Tüm Malzemeleri Listele (GET)
+GET http://localhost:3000/api/malzemeler
+
+### 4. Yeni Malzeme Ekle (POST)
+POST http://localhost:3000/api/malzemeler
+Content-Type: application/json
+
+{
+  "ad": "İçme Suyu (5 Litre)",
+  "kategori_id": 1,
+  "birim": "Adet",
+  "kritik_stok_seviyesi": 100
+}
+
+### 5. Yeni Bölge Ekle (POST)
+POST http://localhost:3000/api/bolgeler
+Content-Type: application/json
+
+{
+  "ad": "Malatya Battalgazi Deprem Bölgesi",
+  "il": "Malatya",
+  "ilce": "Battalgazi",
+  "afet_turu": "DEPREM"
+}
+
+### 6. Yeni Kullanıcı Ekle (POST)
+POST http://localhost:3000/api/kullanicilar
+Content-Type: application/json
+
+{
+  "ad_soyad": "Ahmet Yılmaz",
+  "eposta": "ahmet.yilmaz@afet.com",
+  "sifre_hash": "123456",
+  "rol_id": 1
+}
+
+
+### ==========================================
+### 2. OPERASYONEL TABLOLAR (Sonra Bunları Çalıştır)
+### ==========================================
+
+### 7. Yeni İhtiyaç ve Kalemleri Ekle (POST)
+POST http://localhost:3000/api/ihtiyaclar
+Content-Type: application/json
+
+{
+  "bolge_id": 1,
+  "olusturan_id": 1,
+  "aciliyet": "KRITIK",
+  "aciklama": "Köy merkezinde içme suyu sıkıntısı var.",
+  "kalemler": [
+    {
+      "malzeme_id": 1,
+      "talep_edilen_miktar": 200
+    }
+  ]
+}
+
+### 8. Tüm İhtiyaçları Listele (GET)
+GET http://localhost:3000/api/ihtiyaclar
+
+### 9. Yeni Sevkiyat Oluştur (POST)
+POST http://localhost:3000/api/sevkiyatlar
+Content-Type: application/json
+
+{
+  "ihtiyac_id": 1,
+  "kaynak_depo_id": 1,
+  "olusturan_id": 1,
+  "aciklama": "İhtiyaç için acil su sevkiyatı hazırlanıyor.",
+  "kalemler": [
+    {
+      "malzeme_id": 1,
+      "miktar": 200
+    }
+  ]
+}
+
+### 10. Tüm Sevkiyatları Listele (GET)
+GET http://localhost:3000/api/sevkiyatlar
+### 12. Yeni Araç Ekle (POST)
+POST http://localhost:3000/api/araclar
+Content-Type: application/json
+
+{
+  "plaka": "44 ABC 790",
+  "arac_tipi": "KAMYON",
+  "kapasite_kg": 5000,
+  "surucu_adi": "Mehmet Kaya",
+  "surucu_telefon": "05551234568"
+}
+### 13. Tüm Araçları Listele (GET)
+GET http://localhost:3000/api/araclar
+### 14. Yeni Stok Hareketi Ekle (POST)
+POST http://localhost:3000/api/stok-hareketleri
+Content-Type: application/json
+
+{
+  "depo_id": 11,
+  "malzeme_id": 1,
+  "miktar": 200,
+  "hareket_tipi": "GIRIS",
+  "kullanici_id": 1,
+  "aciklama": "Depoya su girişi"
+}
+### 15. Tüm Stok Hareketlerini Listele (GET)
+GET http://localhost:3000/api/stok-hareketleri
+
+### 15.1 Stok yazma işlemleri için giriş yap (POST)
+POST http://localhost:3000/api/auth/login
+Content-Type: application/json
+
+{
+  "eposta": "burak@afet.com",
+  "sifre": "636363"
+}
+
+### 16. Güncel Depo Stok Bakiyelerini Listele (GET)
+GET http://localhost:3000/api/stok-hareketleri/bakiyeler?depo_id=11
+
+### 17. Kritik Seviyedeki Stokları Listele (GET)
+GET http://localhost:3000/api/stok-hareketleri/kritik?depo_id=11
