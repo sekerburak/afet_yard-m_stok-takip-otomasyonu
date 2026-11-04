@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
+import type { AuthenticatedRequest } from "../middleware/auth.middleware";
 
 const prisma = new PrismaClient();
 
@@ -25,15 +26,15 @@ export const getIhtiyaclar = async (req: Request, res: Response) => {
 };
 
 // Yeni ihtiyaç kaydı oluştur
-export const createIhtiyac = async (req: Request, res: Response) => {
+export const createIhtiyac = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { bolge_id, olusturan_id, aciliyet, aciklama, kalemler } = req.body;
+    const { bolge_id, aciliyet, aciklama, kalemler } = req.body;
     // kalemler: [{ malzeme_id: 1, talep_edilen_miktar: 500 }] şeklinde gelecek
 
     const yeniIhtiyac = await prisma.ihtiyaclar.create({
       data: {
         bolge_id: Number(bolge_id),
-        olusturan_id: Number(olusturan_id),
+        olusturan_id: req.kullanici?.id ?? 0,
         aciliyet,
         aciklama,
         ihtiyac_kalemleri: {

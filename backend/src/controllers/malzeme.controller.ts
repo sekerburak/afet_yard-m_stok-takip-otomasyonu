@@ -3,6 +3,16 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+export const getMalzemeKategorileri = async (req: Request, res: Response) => {
+  try {
+    const kategoriler = await prisma.malzeme_kategorileri.findMany({ orderBy: { ad: "asc" } });
+    res.json(kategoriler);
+  } catch (error) {
+    console.error("Malzeme kategorileri getirilirken hata:", error);
+    res.status(500).json({ mesaj: "Malzeme kategorileri getirilirken hata oluştu." });
+  }
+};
+
 // Tüm malzemeleri listele (Kategori bilgisiyle birlikte)
 export const getMalzemeler = async (req: Request, res: Response) => {
   try {

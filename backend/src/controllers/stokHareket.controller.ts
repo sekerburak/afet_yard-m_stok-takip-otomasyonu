@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
+import type { AuthenticatedRequest } from "../middleware/auth.middleware";
 
 const prisma = new PrismaClient();
 
@@ -55,9 +56,9 @@ export const getStokHareketleri = async (req: Request, res: Response) => {
   };
 
 // Yeni stok hareketi ekle (Giriş veya Çıkış)
-export const createStokHareketi = async (req: Request, res: Response) => {
+export const createStokHareketi = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { depo_id, malzeme_id, miktar, hareket_tipi, kullanici_id, aciklama } = req.body;
+    const { depo_id, malzeme_id, miktar, hareket_tipi, aciklama } = req.body;
 
     const depoId = Number(depo_id);
     const malzemeId = Number(malzeme_id);
@@ -103,7 +104,7 @@ export const createStokHareketi = async (req: Request, res: Response) => {
             malzeme_id: malzemeId,
             miktar: miktarNumber,
             hareket_tipi: hareketTipi,
-            kullanici_id: Number(kullanici_id),
+            kullanici_id: req.kullanici?.id ?? 0,
             aciklama,
           },
         });

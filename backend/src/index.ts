@@ -11,12 +11,15 @@ import sevkiyatRoutes from "./routes/sevkiyat.routes";
 import aracRoutes from "./routes/arac.routes";
 import stokHareketRoutes from "./routes/stokHareket.routes";
 import authRoutes from "./routes/auth.routes";
+import kategoriRoutes from "./routes/kategori.routes";
 
 const prisma = new PrismaClient();
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-app.use(cors({ origin: "http://localhost:5173" }));
+app.use(cors({
+  origin: ["http://localhost:5173", "http://localhost:5174"],
+}));
 app.use(express.json());
 
 app.get("/api/saglik", (_req, res) => {
@@ -33,6 +36,7 @@ app.use("/api/sevkiyatlar", sevkiyatRoutes);
 app.use("/api/araclar", aracRoutes);
 app.use("/api/stok-hareketleri", stokHareketRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/malzeme-kategorileri", kategoriRoutes);
 
 app.listen(PORT, () => {
   console.log(`Sunucu http://localhost:${PORT} adresinde çalışıyor`);

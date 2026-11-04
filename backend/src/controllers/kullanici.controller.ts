@@ -6,7 +6,17 @@ const prisma = new PrismaClient();
 
 export const getKullanicilar = async (req: Request, res: Response) => {
   try {
-    const kullanicilar = await prisma.kullanicilar.findMany();
+    const kullanicilar = await prisma.kullanicilar.findMany({
+      select: {
+        id: true,
+        ad_soyad: true,
+        eposta: true,
+        rol_id: true,
+        aktif: true,
+        olusturma_tarihi: true,
+        roller: { select: { ad: true } },
+      },
+    });
     res.json(kullanicilar);
   } catch (error) {
     res.status(500).json({ mesaj: "Kullanıcılar getirilirken hata oluştu." });

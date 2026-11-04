@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
+import type { AuthenticatedRequest } from "../middleware/auth.middleware";
 
 const prisma = new PrismaClient();
 
@@ -8,7 +9,11 @@ export const getSevkiyatlar = async (req: Request, res: Response) => {
   try {
     const sevkiyatlar = await prisma.sevkiyatlar.findMany({
       include: {
-        ihtiyaclar: true,     // Hangi ihtiyaca istinaden yapıldığı
+        ihtiyaclar: {
+          include: {
+            bolgeler: true,
+          },
+        },                  // Hangi ihtiyaca istinaden yapıldığı
         depolar: true,        // Hangi depodan çıkış yaptığı
         araclar: true,        // Hangi araçla taşındığı
         kullanicilar: true,   // Kimin oluşturduğu
@@ -27,9 +32,9 @@ export const getSevkiyatlar = async (req: Request, res: Response) => {
 };
 
 // Yeni sevkiyat oluştur
-export const createSevkiyat = async (req: Request, res: Response) => {
+export const createSevkiyat = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { ihtiyac_id, kaynak_depo_id, arac_id, olusturan_id, aciklama, kalemler } = req.body;
+    const { ihtiyac_id, kaynak_depo_id, arac_id, aciklama, kalemler } = req.body;
     // kalemler: [{ malzeme_id: 1, miktar: 200 }] şeklinde gelecek
 
     const yeniSevkiyat = await prisma.sevkiyatlar.create({
@@ -37,7 +42,7 @@ export const createSevkiyat = async (req: Request, res: Response) => {
         ihtiyac_id: Number(ihtiyac_id),
         kaynak_depo_id: Number(kaynak_depo_id),
         arac_id: arac_id ? Number(arac_id) : null,
-        olusturan_id: Number(olusturan_id),
+        olusturan_id: req.kullanici?.id ?? 0,
         aciklama,
         durum: "HAZIRLANIYOR",
         sevkiyat_kalemleri: {
