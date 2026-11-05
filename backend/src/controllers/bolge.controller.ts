@@ -20,6 +20,6 @@ export const createBolge = async (req: Request, res: Response) => {
     });
     res.status(201).json({ durum: "başarılı", veri: yeniBolge });
   } catch (error) {
-    res.status(500).json({ mesaj: "Bölge eklenirken hata oluştu.", hata: String(error) });
+    res.status(500).json({ mesaj: "Bölge eklenirken hata oluştu." });
   }
 };

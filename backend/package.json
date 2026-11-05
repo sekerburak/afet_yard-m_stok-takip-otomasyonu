@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "seed": "tsx src/seed.ts",
+    "test": "tsx --test test/**/*.test.ts",
     "postinstall": "prisma skills sync || exit 0"
   },
   "keywords": [],

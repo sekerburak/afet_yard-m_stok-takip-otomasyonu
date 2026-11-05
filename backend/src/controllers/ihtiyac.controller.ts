@@ -56,6 +56,27 @@ export const createIhtiyac = async (req: AuthenticatedRequest, res: Response) =>
     });
   } catch (error) {
     console.error("İhtiyaç eklenirken hata:", error);
-    res.status(500).json({ mesaj: "İhtiyaç eklenirken bir sunucu hatası oluştu.", hata: String(error) });
+    res.status(500).json({ mesaj: "İhtiyaç eklenirken bir sunucu hatası oluştu." });
+  }
+};
+
+export const updateIhtiyacDurum = async (req: AuthenticatedRequest, res: Response) => {
+  const id = Number(req.params.id);
+  const durum = String(req.body.durum ?? "").toUpperCase();
+  const izinliDurumlar = ["BEKLEMEDE", "ONAYLANDI", "KARSILANIYOR", "TAMAMLANDI", "IPTAL"];
+
+  if (!Number.isInteger(id) || !izinliDurumlar.includes(durum)) {
+    return res.status(400).json({ mesaj: "Geçerli bir ihtiyaç numarası ve durum gönderilmelidir." });
+  }
+
+  try {
+    const ihtiyac = await prisma.ihtiyaclar.update({
+      where: { id },
+      data: { durum, guncelleme_tarihi: new Date() },
+    });
+    return res.json({ durum: "başarılı", mesaj: "İhtiyaç durumu güncellendi.", veri: ihtiyac });
+  } catch (error) {
+    console.error("İhtiyaç durumu güncellenirken hata:", error);
+    return res.status(404).json({ mesaj: "İhtiyaç bulunamadı veya durumu güncellenemedi." });
   }
 };

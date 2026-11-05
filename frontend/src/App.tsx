@@ -1,9 +1,15 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import {
   AlertTriangle,
+  UserRound,
+  Activity,
   Boxes,
+  Check,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  CircleAlert,
+  Clock3,
   ClipboardList,
   LayoutDashboard,
   LogOut,
@@ -19,14 +25,17 @@ import {
 } from "lucide-react"
 import "./App.css"
 import { api, ApiError } from "./api"
-import type { Arac, Bolge, Depo, Ihtiyac, Kategori, Kullanici, Malzeme, Saglik, Sevkiyat, Stok } from "./types"
+import type { Arac, Bolge, Depo, Ihtiyac, Kategori, Kullanici, Malzeme, Saglik, Sevkiyat, Stok, StokHareketi, YonetimKullanicisi, Rol } from "./types"
 
-type View = "dashboard" | "stok" | "depolar" | "malzemeler" | "ihtiyaclar" | "sevkiyatlar" | "araclar"
+type View = "dashboard" | "stok" | "depolar" | "malzemeler" | "ihtiyaclar" | "sevkiyatlar" | "araclar" | "kullanicilar"
 
 type AppData = {
   saglik: Saglik | null
   bakiyeler: Stok[]
   kritik: Stok[]
+  stokHareketleri: StokHareketi[]
+  kullanicilar: YonetimKullanicisi[]
+  roller: Rol[]
   depolar: Depo[]
   malzemeler: Malzeme[]
   ihtiyaclar: Ihtiyac[]
@@ -40,6 +49,9 @@ const emptyData: AppData = {
   saglik: null,
   bakiyeler: [],
   kritik: [],
+  stokHareketleri: [],
+  kullanicilar: [],
+  roller: [],
   depolar: [],
   malzemeler: [],
   ihtiyaclar: [],
@@ -57,6 +69,7 @@ const menuItems: Array<{ id: View; label: string; icon: typeof LayoutDashboard }
   { id: "ihtiyaclar", label: "Yardım talepleri", icon: ClipboardList },
   { id: "sevkiyatlar", label: "Sevkiyatlar", icon: Truck },
   { id: "araclar", label: "Araç yönetimi", icon: Truck },
+  { id: "kullanicilar", label: "Kullanıcılar", icon: UserRound },
 ]
 
 function LoginScreen({ onLogin }: { onLogin: (eposta: string, sifre: string) => Promise<void> }) {
@@ -113,6 +126,8 @@ function App() {
   const [malzemeModalAcik, setMalzemeModalAcik] = useState(false)
   const [ihtiyacModalAcik, setIhtiyacModalAcik] = useState(false)
   const [sevkiyatModalAcik, setSevkiyatModalAcik] = useState(false)
+  const [aracModalAcik, setAracModalAcik] = useState(false)
+  const [kullaniciModalAcik, setKullaniciModalAcik] = useState(false)
   const [theme, setTheme] = useState<"dark" | "light">(() => (localStorage.getItem("afet_theme") as "dark" | "light") || "dark")
 
   const login = async (eposta: string, sifre: string) => {
@@ -123,28 +138,31 @@ function App() {
     setKullanici(result.kullanici)
   }
 
-  const logout = () => {
+  const logout = useCallback(() => {
     sessionStorage.removeItem("afet_token")
     sessionStorage.removeItem("afet_user")
     setToken(null)
     setKullanici(null)
-  }
+  }, [])
 
-  const yenile = async () => {
+  const yenile = useCallback(async () => {
     setYukleniyor(true)
     setHata(null)
     try {
-      const [saglik, bakiyeler, kritik, depolar, malzemeler, kategoriler, ihtiyaclar, sevkiyatlar, araclar, bolgeler] = await Promise.all([
-        api.saglik(), api.bakiyeler(), api.kritikStoklar(), api.depolar(), api.malzemeler(), api.kategoriler(), api.ihtiyaclar(), api.sevkiyatlar(), api.araclar(), api.bolgeler(),
+      const [saglik, bakiyeler, kritik, stokHareketleri, depolar, malzemeler, kategoriler, ihtiyaclar, sevkiyatlar, araclar, bolgeler] = await Promise.all([
+        api.saglik(), api.bakiyeler(), api.kritikStoklar(), api.stokHareketleri(), api.depolar(), api.malzemeler(), api.kategoriler(), api.ihtiyaclar(), api.sevkiyatlar(), api.araclar(), api.bolgeler(),
       ])
-      setData({ saglik, bakiyeler, kritik, depolar, malzemeler, kategoriler, ihtiyaclar, sevkiyatlar, araclar, bolgeler })
+      const [kullanicilar, roller] = kullanici?.rol === "Yönetici"
+        ? await Promise.all([api.kullanicilar(), api.roller()])
+        : [emptyData.kullanicilar, emptyData.roller]
+      setData({ saglik, bakiyeler, kritik, stokHareketleri, depolar, malzemeler, kategoriler, ihtiyaclar, sevkiyatlar, araclar, bolgeler, kullanicilar, roller })
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) logout()
       setHata(error instanceof Error ? error.message : "Veriler alınamadı")
     } finally {
       setYukleniyor(false)
     }
-  }
+  }, [kullanici, logout])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -156,11 +174,20 @@ function App() {
     void yenile()
     const interval = window.setInterval(() => void yenile(), 10000)
     return () => window.clearInterval(interval)
-  }, [token])
+  }, [token, yenile])
 
   if (!token) return <LoginScreen onLogin={login} />
 
   const activeLabel = menuItems.find((item) => item.id === view)?.label ?? "Dashboard"
+  const durumGuncelle = async (action: () => Promise<unknown>) => {
+    try {
+      setHata(null)
+      await action()
+      await yenile()
+    } catch (error) {
+      setHata(error instanceof Error ? error.message : "Durum güncellenemedi")
+    }
+  }
 
   return (
     <div className={`app-layout ${sidebarAcik ? "sidebar-open" : "sidebar-collapsed"}`}>
@@ -185,28 +212,36 @@ function App() {
         {stokModalAcik && <StockMovementModal depolar={data.depolar} malzemeler={data.malzemeler} onClose={() => setStokModalAcik(false)} onDone={async () => { setStokModalAcik(false); await yenile() }} />}
         <div className="page-content">
             {view === "dashboard" && <Dashboard data={data} kullanici={kullanici} />}
-          {view === "stok" && <StockPage stocks={data.bakiyeler} critical={data.kritik} />}
-          {view === "depolar" && <DepoPage depolar={data.depolar} stocks={data.bakiyeler} onAdd={() => setDepoModalAcik(true)} />}
-          {view === "malzemeler" && <MalzemePage malzemeler={data.malzemeler} onAdd={() => setMalzemeModalAcik(true)} />}
-          {view === "ihtiyaclar" && <IhtiyacPage ihtiyaclar={data.ihtiyaclar} onAdd={() => setIhtiyacModalAcik(true)} />}
-          {view === "sevkiyatlar" && <SevkiyatPage sevkiyatlar={data.sevkiyatlar} onAdd={() => setSevkiyatModalAcik(true)} />}
-          {view === "araclar" && <AracPage araclar={data.araclar} />}
+          {view === "stok" && <StockPage stocks={data.bakiyeler} critical={data.kritik} movements={data.stokHareketleri} />}
+          {view === "depolar" && <DepoPage depolar={data.depolar} stocks={data.bakiyeler} onAdd={() => setDepoModalAcik(true)} onUpdate={(id, aktif) => void durumGuncelle(() => api.depoDurumuGuncelle(id, aktif))} />}
+          {view === "malzemeler" && <MalzemePage malzemeler={data.malzemeler} onAdd={() => setMalzemeModalAcik(true)} onUpdate={(id, aktif) => void durumGuncelle(() => api.malzemeDurumuGuncelle(id, aktif))} />}
+          {view === "ihtiyaclar" && <IhtiyacPage ihtiyaclar={data.ihtiyaclar} onAdd={() => setIhtiyacModalAcik(true)} onUpdate={(id, durum) => void durumGuncelle(() => api.ihtiyacDurumuGuncelle(id, durum))} />}
+          {view === "sevkiyatlar" && <SevkiyatPage sevkiyatlar={data.sevkiyatlar} onAdd={() => setSevkiyatModalAcik(true)} onUpdate={(id, durum) => void durumGuncelle(() => api.sevkiyatDurumuGuncelle(id, durum))} />}
+          {view === "araclar" && <AracPage araclar={data.araclar} onAdd={() => setAracModalAcik(true)} onUpdate={(id, durum) => void durumGuncelle(() => api.aracDurumuGuncelle(id, durum))} />}
+          {view === "kullanicilar" && <KullaniciPage kullanicilar={data.kullanicilar} onAdd={() => setKullaniciModalAcik(true)} onUpdate={(id, aktif) => void durumGuncelle(() => api.kullaniciDurumuGuncelle(id, aktif))} />}
         </div>
       </main>
       {depoModalAcik && <DepoModal onClose={() => setDepoModalAcik(false)} onDone={async () => { setDepoModalAcik(false); await yenile() }} />}
       {malzemeModalAcik && <MalzemeModal kategoriler={data.kategoriler} onClose={() => setMalzemeModalAcik(false)} onDone={async () => { setMalzemeModalAcik(false); await yenile() }} />}
       {ihtiyacModalAcik && <IhtiyacModal bolgeler={data.bolgeler} malzemeler={data.malzemeler} onClose={() => setIhtiyacModalAcik(false)} onDone={async () => { setIhtiyacModalAcik(false); await yenile() }} />}
       {sevkiyatModalAcik && <SevkiyatModal ihtiyaclar={data.ihtiyaclar} depolar={data.depolar} araclar={data.araclar} malzemeler={data.malzemeler} onClose={() => setSevkiyatModalAcik(false)} onDone={async () => { setSevkiyatModalAcik(false); await yenile() }} />}
+      {aracModalAcik && <AracModal onClose={() => setAracModalAcik(false)} onDone={async () => { setAracModalAcik(false); await yenile() }} />}
+      {kullaniciModalAcik && <KullaniciModal roller={data.roller} onClose={() => setKullaniciModalAcik(false)} onDone={async () => { setKullaniciModalAcik(false); await yenile() }} />}
     </div>
   )
 }
 
 function Dashboard({ data, kullanici }: { data: AppData; kullanici: Kullanici | null }) {
   const firstName = kullanici?.ad_soyad.split(" ")[0] ?? "Kullanıcı"
-  const today = new Intl.DateTimeFormat("tr-TR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(new Date())
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(new Date()), 1000)
+    return () => window.clearInterval(interval)
+  }, [])
+  const today = new Intl.DateTimeFormat("tr-TR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(now)
 
   return <>
-    <section className="welcome-row"><div><p className="eyebrow">{today.toLocaleUpperCase("tr-TR")}</p><h1>Hoş geldin, {firstName}<span>.</span></h1><p className="hero-copy">Afet operasyonlarını tek merkezden izle.</p></div><div className="dashboard-date">CANLI BAĞLANTI<br /><strong>{new Date().toLocaleTimeString("tr-TR")}</strong></div></section>
+    <section className="welcome-row"><div><p className="eyebrow">{today.toLocaleUpperCase("tr-TR")}</p><h1>Hoş geldin, {firstName}<span>.</span></h1><p className="hero-copy">Afet operasyonlarını tek merkezden izle.</p></div><div className="dashboard-date">CANLI BAĞLANTI<br /><strong>{now.toLocaleTimeString("tr-TR")}</strong></div></section>
     <section className="tactical-grid">
       <TacticalMap depolar={data.depolar} bolgeler={data.bolgeler} sevkiyatSayisi={data.sevkiyatlar.length} ihtiyacSayisi={data.ihtiyaclar.length} />
       <InventoryPanel stocks={data.bakiyeler} critical={data.kritik} />
@@ -267,7 +302,7 @@ function NeedsPanel({ ihtiyaclar }: { ihtiyaclar: Ihtiyac[] }) { return <article
 
 function FleetPanel({ araclar }: { araclar: Arac[] }) { const maxCapacity = Math.max(...araclar.map((arac) => arac.kapasite_kg ?? 0), 1); return <article className="tactical-panel fleet-panel"><PanelTitle number="05" title="Filo & araç yönetimi" subtitle="Dark tactical mode" />{araclar.length ? <div className="fleet-grid">{araclar.slice(0, 3).map((arac) => <div className="fleet-card" key={arac.id}><div className="fleet-head"><strong>{arac.arac_tipi}</strong><span className={arac.durum === "MUSAIT" ? "available" : "busy"}>{arac.durum}</span></div><div className="vehicle-shape"><Truck size={42} /></div><h3>{arac.plaka}</h3><p>{arac.surucu_adi || "Sürücü atanmamış"}</p><div className="capacity"><span>Kapasite</span><b>{arac.kapasite_kg ? `${arac.kapasite_kg} kg` : "-"}</b><i><em style={{ width: `${((arac.kapasite_kg ?? 0) / maxCapacity) * 100}%` }} /></i></div></div>)}</div> : <Empty text="Araç kaydı bulunmuyor." />}</article> }
 
-function StockPage({ stocks, critical }: { stocks: Stok[]; critical: Stok[] }) {
+function StockPage({ stocks, critical, movements }: { stocks: Stok[]; critical: Stok[]; movements: StokHareketi[] }) {
   const [arama, setArama] = useState("")
   const [depoFiltresi, setDepoFiltresi] = useState("TUMU")
   const [durumFiltresi, setDurumFiltresi] = useState("TUMU")
@@ -280,18 +315,98 @@ function StockPage({ stocks, critical }: { stocks: Stok[]; critical: Stok[] }) {
     return matchesSearch && matchesDepot && matchesStatus
   })
 
-  return <DataPage title="Stok yönetimi" kicker="ENVANTER" description="Depolardaki güncel malzeme bakiyeleri ve kritik eşikler."><div className="table-toolbar"><input placeholder="Malzeme veya depo ara..." value={arama} onChange={(event) => setArama(event.target.value)} /><select value={depoFiltresi} onChange={(event) => setDepoFiltresi(event.target.value)}><option value="TUMU">Tüm depolar</option>{depolar.map(([id, name]) => <option value={id} key={id}>{name}</option>)}</select><select value={durumFiltresi} onChange={(event) => setDurumFiltresi(event.target.value)}><option value="TUMU">Tüm durumlar</option><option value="KRITIK">Kritik</option><option value="NORMAL">Normal</option></select></div><div className="table-wrap"><table><thead><tr><th>Malzeme</th><th>Kategori</th><th>Depo</th><th>Mevcut</th><th>Minimum</th><th>Durum</th></tr></thead><tbody>{filtered.map((stock) => { const isCritical = critical.some((item) => item.id === stock.id); return <tr key={stock.id}><td><strong>{stock.malzemeler.ad}</strong></td><td>{stock.malzemeler.malzeme_kategorileri?.ad ?? "-"}</td><td>{stock.depolar.ad}</td><td className="amount">{stock.miktar} {stock.malzemeler.birim}</td><td>{stock.malzemeler.kritik_stok_seviyesi}</td><td><span className={`status-tag ${isCritical ? "danger" : "success"}`}>{isCritical ? "Kritik" : "Normal"}</span></td></tr> })}</tbody></table></div>{filtered.length === 0 && <Empty text="Filtreye uyan stok kaydı bulunmuyor." />}</DataPage>
+  return <DataPage title="Stok yönetimi" kicker="ENVANTER" description="Depolardaki güncel malzeme bakiyeleri ve kritik eşikler."><div className="table-toolbar"><input placeholder="Malzeme veya depo ara..." value={arama} onChange={(event) => setArama(event.target.value)} /><select value={depoFiltresi} onChange={(event) => setDepoFiltresi(event.target.value)}><option value="TUMU">Tüm depolar</option>{depolar.map(([id, name]) => <option value={id} key={id}>{name}</option>)}</select><select value={durumFiltresi} onChange={(event) => setDurumFiltresi(event.target.value)}><option value="TUMU">Tüm durumlar</option><option value="KRITIK">Kritik</option><option value="NORMAL">Normal</option></select></div><div className="table-wrap"><table><thead><tr><th>Malzeme</th><th>Kategori</th><th>Depo</th><th>Mevcut</th><th>Minimum</th><th>Durum</th></tr></thead><tbody>{filtered.map((stock) => { const isCritical = critical.some((item) => item.id === stock.id); return <tr key={stock.id}><td><strong>{stock.malzemeler.ad}</strong></td><td>{stock.malzemeler.malzeme_kategorileri?.ad ?? "-"}</td><td>{stock.depolar.ad}</td><td className="amount">{stock.miktar} {stock.malzemeler.birim}</td><td>{stock.malzemeler.kritik_stok_seviyesi}</td><td><span className={`status-tag ${isCritical ? "danger" : "success"}`}>{isCritical ? "Kritik" : "Normal"}</span></td></tr> })}</tbody></table></div>{filtered.length === 0 && <Empty text="Filtreye uyan stok kaydı bulunmuyor." />}<StockHistory movements={movements} /></DataPage>
 }
 
-function DepoPage({ depolar, stocks, onAdd }: { depolar: Depo[]; stocks: Stok[]; onAdd: () => void }) { return <DataPage title="Depolar" kicker="ALTYAPI" description="Sistemdeki aktif yardım depoları." actionLabel="Yeni depo" onAction={onAdd}><div className="entity-grid">{depolar.map((depo) => { const depoStocks = stocks.filter((stock) => stock.depo_id === depo.id); const total = depoStocks.reduce((sum, stock) => sum + stock.miktar, 0); return <article className="entity-card" key={depo.id}><div className="entity-icon"><Warehouse size={18} /></div><div><h3>{depo.ad}</h3><p>{depo.il}{depo.ilce ? `, ${depo.ilce}` : ""}</p></div><div className="entity-stat"><span>Toplam stok</span><strong>{total}</strong></div><div className="entity-footer"><span>{depoStocks.length} malzeme kalemi</span><span className="status-tag success">Aktif</span></div></article> })}</div>{depolar.length === 0 && <Empty text="Depo kaydı bulunmuyor." />}</DataPage> }
+function StockHistory({ movements }: { movements: StokHareketi[] }) {
+  const [filter, setFilter] = useState<"TUMU" | "GIRIS" | "CIKIS">("TUMU")
+  const filtered = movements.filter((movement) => filter === "TUMU" || movement.hareket_tipi === filter)
+  return <section className="history-section"><div className="section-heading"><div><p className="eyebrow">DENETİM İZİ</p><h2>Son stok hareketleri</h2></div><select className="history-filter" value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)}><option value="TUMU">Tümü</option><option value="GIRIS">Girişler</option><option value="CIKIS">Çıkışlar</option></select></div>{filtered.length ? <div className="history-list">{filtered.map((movement) => <div className="history-row" key={movement.id}><span className={`history-icon ${movement.hareket_tipi === "GIRIS" ? "in" : "out"}`}>{movement.hareket_tipi === "GIRIS" ? "↑" : "↓"}</span><div className="history-main"><strong>{movement.malzemeler.ad}</strong><span>{movement.depolar.ad} · {movement.kullanicilar.ad_soyad}</span></div><div className={`history-amount ${movement.hareket_tipi === "GIRIS" ? "in" : "out"}`}>{movement.hareket_tipi === "GIRIS" ? "+" : "-"}{movement.miktar} {movement.malzemeler.birim}</div><time>{new Intl.DateTimeFormat("tr-TR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(movement.tarih))}</time></div>)}</div> : <Empty text="Henüz stok hareketi bulunmuyor." />}</section>
+}
 
-function MalzemePage({ malzemeler, onAdd }: { malzemeler: Malzeme[]; onAdd: () => void }) { return <DataPage title="Yardım malzemeleri" kicker="KATALOG" description="Sistemde tanımlı yardım malzemeleri ve kritik seviyeleri." actionLabel="Yeni malzeme" onAction={onAdd}><div className="entity-grid">{malzemeler.map((item) => <article className="entity-card" key={item.id}><div className="entity-icon orange"><PackageCheck size={18} /></div><h3>{item.ad}</h3><p>{item.malzeme_kategorileri?.ad ?? "Kategori belirtilmemiş"}</p><div className="entity-footer"><span>Birim: {item.birim}</span><span>Min: {item.kritik_stok_seviyesi}</span></div></article>)}</div>{malzemeler.length === 0 && <Empty text="Malzeme kaydı bulunmuyor." />}</DataPage> }
+function DepoPage({ depolar, stocks, onAdd, onUpdate }: { depolar: Depo[]; stocks: Stok[]; onAdd: () => void; onUpdate: (id: number, aktif: boolean) => void }) { return <DataPage title="Depolar" kicker="ALTYAPI" description="Sistemdeki yardım depoları ve operasyon durumları." actionLabel="Yeni depo" onAction={onAdd}><div className="entity-grid">{depolar.map((depo) => { const depoStocks = stocks.filter((stock) => stock.depo_id === depo.id); const total = depoStocks.reduce((sum, stock) => sum + stock.miktar, 0); return <article className="entity-card" key={depo.id}><div className="entity-icon"><Warehouse size={18} /></div><div><h3>{depo.ad}</h3><p>{depo.il}{depo.ilce ? `, ${depo.ilce}` : ""}</p></div><div className="entity-stat"><span>Toplam stok</span><strong>{total}</strong></div><div className="entity-footer"><span>{depoStocks.length} malzeme kalemi</span><button type="button" className={`account-toggle ${depo.aktif ? "active" : ""}`} onClick={() => onUpdate(depo.id, !depo.aktif)}>{depo.aktif ? "Aktif" : "Pasif"}</button></div></article> })}</div>{depolar.length === 0 && <Empty text="Depo kaydı bulunmuyor." />}</DataPage> }
 
-function IhtiyacPage({ ihtiyaclar, onAdd }: { ihtiyaclar: Ihtiyac[]; onAdd: () => void }) { return <DataPage title="Yardım talepleri" kicker="OPERASYON" description="Bölgelerden gelen ihtiyaç kayıtları." actionLabel="Yeni talep" onAction={onAdd}><div className="request-list">{ihtiyaclar.map((item) => <article className="request-card" key={item.id}><div><span className={`priority ${item.aciliyet.toLowerCase()}`}>{item.aciliyet}</span><h3>{item.bolgeler.ad}</h3><p>{item.aciklama || "Açıklama girilmemiş."}</p></div><div className="request-meta"><span>{item.kullanicilar.ad_soyad}</span><span className="status-tag neutral">{item.durum}</span></div></article>)}</div>{ihtiyaclar.length === 0 && <Empty text="Yardım talebi bulunmuyor." />}</DataPage> }
+function MalzemePage({ malzemeler, onAdd, onUpdate }: { malzemeler: Malzeme[]; onAdd: () => void; onUpdate: (id: number, aktif: boolean) => void }) { return <DataPage title="Yardım malzemeleri" kicker="KATALOG" description="Sistemde tanımlı yardım malzemeleri ve kritik seviyeleri." actionLabel="Yeni malzeme" onAction={onAdd}><div className="entity-grid">{malzemeler.map((item) => <article className="entity-card" key={item.id}><div className="entity-icon orange"><PackageCheck size={18} /></div><h3>{item.ad}</h3><p>{item.malzeme_kategorileri?.ad ?? "Kategori belirtilmemiş"}</p><div className="entity-footer"><span>Birim: {item.birim}</span><button type="button" className={`account-toggle ${item.aktif ? "active" : ""}`} onClick={() => onUpdate(item.id, !item.aktif)}>{item.aktif ? "Aktif" : "Pasif"}</button></div></article>)}</div>{malzemeler.length === 0 && <Empty text="Malzeme kaydı bulunmuyor." />}</DataPage> }
 
-function SevkiyatPage({ sevkiyatlar, onAdd }: { sevkiyatlar: Sevkiyat[]; onAdd: () => void }) { const [durum, setDurum] = useState("TUMU"); const filtered = sevkiyatlar.filter((item) => durum === "TUMU" || item.durum === durum); return <DataPage title="Sevkiyatlar" kicker="DAĞITIM" description="Hazırlanan ve takip edilen yardım sevkiyatları." actionLabel="Yeni sevkiyat" onAction={onAdd}><div className="table-toolbar"><select value={durum} onChange={(event) => setDurum(event.target.value)}><option value="TUMU">Tüm sevkiyatlar</option><option value="YOLDA">Yolda</option><option value="HAZIRLANIYOR">Hazırlanıyor</option><option value="TESLIM_EDILDI">Teslim edildi</option></select></div><div className="request-list">{filtered.map((item) => <article className="request-card" key={item.id}><div><span className="priority info">SEVKİYAT #{item.id}</span><h3>{item.ihtiyaclar.bolgeler.ad}</h3><p>{item.depolar.ad}{item.araclar ? ` · ${item.araclar.plaka}` : " · Araç atanmamış"}</p></div><div className="request-meta"><span className="status-tag neutral">{item.durum}</span></div></article>)}</div>{filtered.length === 0 && <Empty text="Filtreye uyan sevkiyat bulunmuyor." />}</DataPage> }
+function IhtiyacPage({ ihtiyaclar, onAdd, onUpdate }: { ihtiyaclar: Ihtiyac[]; onAdd: () => void; onUpdate: (id: number, durum: string) => void }) { return <DataPage title="Yardım talepleri" kicker="OPERASYON" description="Bölgelerden gelen ihtiyaç kayıtları." actionLabel="Yeni talep" onAction={onAdd}><div className="request-list">{ihtiyaclar.map((item) => <article className="request-card" key={item.id}><div><span className={`priority ${item.aciliyet.toLowerCase()}`}>{item.aciliyet}</span><h3>{item.bolgeler.ad}</h3><p>{item.aciklama || "Açıklama girilmemiş."}</p></div><div className="request-meta"><span>{item.kullanicilar.ad_soyad}</span><StatusSelect value={item.durum} options={["BEKLEMEDE", "ONAYLANDI", "KARSILANIYOR", "TAMAMLANDI", "IPTAL"]} onChange={(value) => onUpdate(item.id, value)} /></div></article>)}</div>{ihtiyaclar.length === 0 && <Empty text="Yardım talebi bulunmuyor." />}</DataPage> }
 
-function AracPage({ araclar }: { araclar: Arac[] }) { const [durum, setDurum] = useState("TUMU"); const filtered = araclar.filter((arac) => durum === "TUMU" || arac.durum === durum); return <DataPage title="Araç yönetimi" kicker="FİLO" description="Dağıtımlarda kullanılabilecek araçlar."><div className="table-toolbar"><select value={durum} onChange={(event) => setDurum(event.target.value)}><option value="TUMU">Tüm araçlar</option><option value="MUSAIT">Müsait</option><option value="GOREVDE">Görevde</option><option value="BAKIMDA">Bakımda</option></select></div><div className="entity-grid">{filtered.map((arac) => <article className="entity-card" key={arac.id}><div className="entity-icon"><Truck size={18} /></div><h3>{arac.plaka}</h3><p>{arac.arac_tipi} · {arac.surucu_adi || "Sürücü atanmamış"}</p><div className="entity-footer"><span>{arac.kapasite_kg ? `${arac.kapasite_kg} kg` : "Kapasite yok"}</span><span className={`status-tag ${arac.durum === "MUSAIT" ? "success" : "neutral"}`}>{arac.durum}</span></div></article>)}</div>{filtered.length === 0 && <Empty text="Filtreye uyan araç bulunmuyor." />}</DataPage> }
+function SevkiyatPage({ sevkiyatlar, onAdd, onUpdate }: { sevkiyatlar: Sevkiyat[]; onAdd: () => void; onUpdate: (id: number, durum: string) => void }) { const [durum, setDurum] = useState("TUMU"); const filtered = sevkiyatlar.filter((item) => durum === "TUMU" || item.durum === durum); return <DataPage title="Sevkiyatlar" kicker="DAĞITIM" description="Hazırlanan ve takip edilen yardım sevkiyatları." actionLabel="Yeni sevkiyat" onAction={onAdd}><div className="table-toolbar"><select value={durum} onChange={(event) => setDurum(event.target.value)}><option value="TUMU">Tüm sevkiyatlar</option><option value="YOLDA">Yolda</option><option value="HAZIRLANIYOR">Hazırlanıyor</option><option value="TESLIM_EDILDI">Teslim edildi</option><option value="IPTAL">İptal</option></select></div><div className="request-list">{filtered.map((item) => <article className="request-card" key={item.id}><div><span className="priority info">SEVKİYAT #{item.id}</span><h3>{item.ihtiyaclar.bolgeler.ad}</h3><p>{item.depolar.ad}{item.araclar ? ` · ${item.araclar.plaka}` : " · Araç atanmamış"}</p></div><div className="request-meta"><StatusSelect value={item.durum} options={["HAZIRLANIYOR", "YOLDA", "TESLIM_EDILDI", "IPTAL"]} onChange={(value) => onUpdate(item.id, value)} /></div></article>)}</div>{filtered.length === 0 && <Empty text="Filtreye uyan sevkiyat bulunmuyor." />}</DataPage> }
+
+function AracPage({ araclar, onAdd, onUpdate }: { araclar: Arac[]; onAdd: () => void; onUpdate: (id: number, durum: string) => void }) { const [durum, setDurum] = useState("TUMU"); const filtered = araclar.filter((arac) => durum === "TUMU" || arac.durum === durum); return <DataPage title="Araç yönetimi" kicker="FİLO" description="Dağıtımlarda kullanılabilecek araçlar." actionLabel="Yeni araç" onAction={onAdd}><div className="table-toolbar"><select value={durum} onChange={(event) => setDurum(event.target.value)}><option value="TUMU">Tüm araçlar</option><option value="MUSAIT">Müsait</option><option value="GOREVDE">Görevde</option><option value="BAKIMDA">Bakımda</option></select></div><div className="entity-grid">{filtered.map((arac) => <article className="entity-card" key={arac.id}><div className="entity-icon"><Truck size={18} /></div><h3>{arac.plaka}</h3><p>{arac.arac_tipi} · {arac.surucu_adi || "Sürücü atanmamış"}</p><div className="entity-footer"><span>{arac.kapasite_kg ? `${arac.kapasite_kg} kg` : "Kapasite yok"}</span><StatusSelect value={arac.durum} options={["MUSAIT", "GOREVDE", "BAKIMDA"]} onChange={(value) => onUpdate(arac.id, value)} /></div></article>)}</div>{filtered.length === 0 && <Empty text="Filtreye uyan araç bulunmuyor." />}</DataPage> }
+
+function KullaniciPage({ kullanicilar, onAdd, onUpdate }: { kullanicilar: YonetimKullanicisi[]; onAdd: () => void; onUpdate: (id: number, aktif: boolean) => void }) {
+  return <DataPage title="Kullanıcı yönetimi" kicker="SİSTEM" description="Operasyon ekibinin erişim ve hesap durumlarını yönetin." actionLabel="Yeni kullanıcı" onAction={onAdd}><div className="user-grid">{kullanicilar.map((kullanici) => <article className="user-card" key={kullanici.id}><div className="user-card-head"><span className="avatar">{kullanici.ad_soyad.slice(0, 1)}</span><div><h3>{kullanici.ad_soyad}</h3><p>{kullanici.eposta}</p></div></div><div className="user-card-meta"><span className="role-pill">{kullanici.roller.ad}</span><button type="button" className={`account-toggle ${kullanici.aktif ? "active" : ""}`} onClick={() => onUpdate(kullanici.id, !kullanici.aktif)}>{kullanici.aktif ? "Aktif" : "Pasif"}</button></div></article>)}</div>{kullanicilar.length === 0 && <Empty text="Kullanıcı bulunmuyor." />}</DataPage>
+}
+
+const statusDetails: Record<string, { label: string; tone: string; Icon: typeof Check }> = {
+  MUSAIT: { label: "Müsait", tone: "available", Icon: Check },
+  BEKLEMEDE: { label: "Beklemede", tone: "pending", Icon: Clock3 },
+  ONAYLANDI: { label: "Onaylandı", tone: "approved", Icon: Check },
+  KARSILANIYOR: { label: "Karşılanıyor", tone: "active", Icon: Activity },
+  GOREVDE: { label: "Görevde", tone: "active", Icon: Activity },
+  TAMAMLANDI: { label: "Tamamlandı", tone: "completed", Icon: Check },
+  HAZIRLANIYOR: { label: "Hazırlanıyor", tone: "pending", Icon: Clock3 },
+  YOLDA: { label: "Yolda", tone: "active", Icon: Truck },
+  TESLIM_EDILDI: { label: "Teslim edildi", tone: "completed", Icon: Check },
+  IPTAL: { label: "İptal", tone: "critical", Icon: CircleAlert },
+}
+
+function StatusSelect({ value, options, onChange }: { value: string; options: string[]; onChange: (value: string) => void }) {
+  const [acik, setAcik] = useState(false)
+  const [yon, setYon] = useState<"down" | "up">("down")
+  const containerRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const selected = statusDetails[value] ?? { label: value.replaceAll("_", " "), tone: "neutral", Icon: CircleAlert }
+  const SelectedIcon = selected.Icon
+
+  const konumuBelirle = () => {
+    const container = containerRef.current
+    const menu = menuRef.current
+    if (!container || !menu) return
+
+    const containerRect = container.getBoundingClientRect()
+    const menuHeight = menu.getBoundingClientRect().height
+    const gap = 8
+    const asagiBosluk = window.innerHeight - containerRect.bottom
+    const yukariBosluk = containerRect.top
+    setYon(asagiBosluk < menuHeight + gap && yukariBosluk >= menuHeight + gap ? "up" : "down")
+  }
+
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) setAcik(false)
+    }
+    document.addEventListener("mousedown", close)
+    return () => document.removeEventListener("mousedown", close)
+  }, [])
+
+  useEffect(() => {
+    if (!acik) return
+    const frame = window.requestAnimationFrame(konumuBelirle)
+    window.addEventListener("resize", konumuBelirle)
+    window.addEventListener("scroll", konumuBelirle, true)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener("resize", konumuBelirle)
+      window.removeEventListener("scroll", konumuBelirle, true)
+    }
+  }, [acik, options.length])
+
+  return <div className={`status-dropdown ${acik ? "open" : ""}`} ref={containerRef}>
+    <button type="button" className={`status-trigger status-${selected.tone}`} onClick={() => setAcik((current) => !current)} aria-haspopup="listbox" aria-expanded={acik}>
+      <span className="status-trigger-label"><SelectedIcon size={14} /><span>{selected.label}</span></span><ChevronDown size={14} className="status-chevron" />
+    </button>
+    {acik && <div ref={menuRef} className={`status-menu status-menu-${yon}`} role="listbox" aria-label="Durum seçenekleri">
+      {options.map((option) => {
+        const detail = statusDetails[option] ?? { label: option.replaceAll("_", " "), tone: "neutral", Icon: CircleAlert }
+        const OptionIcon = detail.Icon
+        return <button type="button" role="option" aria-selected={option === value} className={`status-option status-${detail.tone} ${option === value ? "selected" : ""}`} key={option} onClick={() => { onChange(option); setAcik(false) }}>
+          <span className="status-trigger-label"><OptionIcon size={14} /><span>{detail.label}</span></span>{option === value && <Check size={14} />}
+        </button>
+      })}
+    </div>}
+  </div>
+}
 
 function DepoModal({ onClose, onDone }: { onClose: () => void; onDone: () => Promise<void> }) {
   const [form, setForm] = useState({ ad: "", il: "", ilce: "", adres: "", enlem: "", boylam: "" })
@@ -335,6 +450,55 @@ function MalzemeModal({ kategoriler, onClose, onDone }: { kategoriler: Kategori[
   }
 
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}><section className="movement-modal glass-card"><div className="modal-heading"><div><p className="eyebrow">KATALOG KAYDI</p><h2>Yeni malzeme ekle</h2></div><button className="icon-button" onClick={onClose} aria-label="Pencereyi kapat"><X size={17} /></button></div><form className="movement-form" onSubmit={submit}><label>Malzeme adı<input value={form.ad} onChange={(event) => setForm((current) => ({ ...current, ad: event.target.value }))} required /></label><label>Kategori<select value={form.kategori_id} onChange={(event) => setForm((current) => ({ ...current, kategori_id: Number(event.target.value) }))}>{kategoriler.map((kategori) => <option value={kategori.id} key={kategori.id}>{kategori.ad}</option>)}</select></label><div className="form-two-columns"><label>Birim<input value={form.birim} onChange={(event) => setForm((current) => ({ ...current, birim: event.target.value }))} required /></label><label>Kritik stok seviyesi<input type="number" min="0" value={form.kritik_stok_seviyesi} onChange={(event) => setForm((current) => ({ ...current, kritik_stok_seviyesi: Number(event.target.value) }))} required /></label></div>{hata && <div className="form-error">{hata}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Vazgeç</button><button type="submit" className="primary-button" disabled={yukleniyor || kategoriler.length === 0}>{yukleniyor ? "Kaydediliyor..." : "Malzemeyi kaydet"}</button></div></form></section></div>
+}
+
+function AracModal({ onClose, onDone }: { onClose: () => void; onDone: () => Promise<void> }) {
+  const [form, setForm] = useState({ plaka: "", arac_tipi: "KAMYON", kapasite_kg: "", surucu_adi: "", surucu_telefon: "" })
+  const [hata, setHata] = useState<string | null>(null)
+  const [yukleniyor, setYukleniyor] = useState(false)
+  const update = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }))
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setYukleniyor(true)
+    setHata(null)
+    try {
+      await api.aracOlustur({
+        plaka: form.plaka.trim().toUpperCase(),
+        arac_tipi: form.arac_tipi,
+        kapasite_kg: form.kapasite_kg ? Number(form.kapasite_kg) : undefined,
+        surucu_adi: form.surucu_adi.trim() || undefined,
+        surucu_telefon: form.surucu_telefon.trim() || undefined,
+      })
+      await onDone()
+    } catch (error) {
+      setHata(error instanceof Error ? error.message : "Araç oluşturulamadı")
+    } finally {
+      setYukleniyor(false)
+    }
+  }
+
+  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}><section className="movement-modal glass-card"><div className="modal-heading"><div><p className="eyebrow">FİLO KAYDI</p><h2>Yeni araç ekle</h2></div><button className="icon-button" onClick={onClose} aria-label="Pencereyi kapat"><X size={17} /></button></div><form className="movement-form" onSubmit={submit}><div className="form-two-columns"><label>Plaka<input value={form.plaka} onChange={(event) => update("plaka", event.target.value)} placeholder="44 DEM 046" required /></label><label>Araç tipi<select value={form.arac_tipi} onChange={(event) => update("arac_tipi", event.target.value)}><option>TIR</option><option>KAMYON</option><option>VAN</option><option>PICKUP</option></select></label></div><div className="form-two-columns"><label>Kapasite (kg)<input type="number" min="1" value={form.kapasite_kg} onChange={(event) => update("kapasite_kg", event.target.value)} /></label><label>Sürücü adı<input value={form.surucu_adi} onChange={(event) => update("surucu_adi", event.target.value)} /></label></div><label>Sürücü telefonu<input type="tel" value={form.surucu_telefon} onChange={(event) => update("surucu_telefon", event.target.value)} placeholder="05xxxxxxxxx" /></label>{hata && <div className="form-error">{hata}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Vazgeç</button><button type="submit" className="primary-button" disabled={yukleniyor}>{yukleniyor ? "Kaydediliyor..." : "Aracı kaydet"}</button></div></form></section></div>
+}
+
+function KullaniciModal({ roller, onClose, onDone }: { roller: Rol[]; onClose: () => void; onDone: () => Promise<void> }) {
+  const [form, setForm] = useState({ ad_soyad: "", eposta: "", sifre: "", rol_id: roller[0]?.id ?? 0 })
+  const [hata, setHata] = useState<string | null>(null)
+  const [yukleniyor, setYukleniyor] = useState(false)
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setYukleniyor(true)
+    setHata(null)
+    try {
+      await api.kullaniciOlustur({ ...form, ad_soyad: form.ad_soyad.trim(), eposta: form.eposta.trim().toLowerCase() })
+      await onDone()
+    } catch (error) {
+      setHata(error instanceof Error ? error.message : "Kullanıcı oluşturulamadı")
+    } finally {
+      setYukleniyor(false)
+    }
+  }
+  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}><section className="movement-modal glass-card"><div className="modal-heading"><div><p className="eyebrow">ERİŞİM KAYDI</p><h2>Yeni kullanıcı ekle</h2></div><button className="icon-button" onClick={onClose} aria-label="Pencereyi kapat"><X size={17} /></button></div><form className="movement-form" onSubmit={submit}><label>Ad soyad<input value={form.ad_soyad} onChange={(event) => setForm((current) => ({ ...current, ad_soyad: event.target.value }))} required /></label><label>Eposta<input type="email" value={form.eposta} onChange={(event) => setForm((current) => ({ ...current, eposta: event.target.value }))} required /></label><div className="form-two-columns"><label>Geçici şifre<input type="password" minLength={6} value={form.sifre} onChange={(event) => setForm((current) => ({ ...current, sifre: event.target.value }))} required /></label><label>Rol<select value={form.rol_id} onChange={(event) => setForm((current) => ({ ...current, rol_id: Number(event.target.value) }))}>{roller.map((rol) => <option value={rol.id} key={rol.id}>{rol.ad}</option>)}</select></label></div>{hata && <div className="form-error">{hata}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Vazgeç</button><button type="submit" className="primary-button" disabled={yukleniyor || roller.length === 0}>{yukleniyor ? "Kaydediliyor..." : "Kullanıcıyı kaydet"}</button></div></form></section></div>
 }
 
 function IhtiyacModal({ bolgeler, malzemeler, onClose, onDone }: { bolgeler: Bolge[]; malzemeler: Malzeme[]; onClose: () => void; onDone: () => Promise<void> }) {

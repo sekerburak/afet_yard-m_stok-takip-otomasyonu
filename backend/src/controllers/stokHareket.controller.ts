@@ -7,7 +7,16 @@ const prisma = new PrismaClient();
 // Tüm stok hareketlerini listele
 export const getStokHareketleri = async (req: Request, res: Response) => {
   try {
-    const hareketler = await prisma.stok_hareketleri.findMany();
+    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 250);
+    const hareketler = await prisma.stok_hareketleri.findMany({
+      take: limit,
+      orderBy: { tarih: "desc" },
+      include: {
+        depolar: { select: { id: true, ad: true } },
+        malzemeler: { select: { id: true, ad: true, birim: true } },
+        kullanicilar: { select: { id: true, ad_soyad: true } },
+      },
+    });
     res.json(hareketler);
   } catch (error) {
     console.error("Stok hareketleri getirilirken hata:", error);
@@ -123,6 +132,6 @@ export const createStokHareketi = async (req: AuthenticatedRequest, res: Respons
     if (error instanceof Error && error.message === "Yetersiz stok") {
       return res.status(409).json({ mesaj: "Yetersiz stok. Çıkış miktarı mevcut bakiyeden fazla olamaz." });
     }
-    res.status(500).json({ mesaj: "Stok hareketi eklenirken bir sunucu hatası oluştu.", hata: String(error) });
+    res.status(500).json({ mesaj: "Stok hareketi eklenirken bir sunucu hatası oluştu." });
   }
 };

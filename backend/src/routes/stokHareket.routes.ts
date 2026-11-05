@@ -9,9 +9,9 @@ import { requireAuth, requireRole } from "../middleware/auth.middleware";
 
 const router = Router();
 
-router.get("/", getStokHareketleri);
-router.get("/bakiyeler", getStokBakiyeleri);
-router.get("/kritik", getKritikStoklar);
+router.get("/", requireAuth, getStokHareketleri);
+router.get("/bakiyeler", requireAuth, getStokBakiyeleri);
+router.get("/kritik", requireAuth, getKritikStoklar);
 router.post("/", requireAuth, requireRole("Yönetici"), createStokHareketi);
 
 export default router;

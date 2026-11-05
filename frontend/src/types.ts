@@ -16,6 +16,19 @@ export type Stok = {
   }
 }
 
+export type StokHareketi = {
+  id: number
+  depo_id: number
+  malzeme_id: number
+  hareket_tipi: "GIRIS" | "CIKIS"
+  miktar: number
+  aciklama?: string | null
+  tarih: string
+  depolar: { id: number; ad: string }
+  malzemeler: { id: number; ad: string; birim: string }
+  kullanicilar: { id: number; ad_soyad: string }
+}
+
 export type Depo = {
   id: number
   ad: string
@@ -89,6 +102,8 @@ export type Kullanici = {
   eposta: string
   rol: string
 }
+export type YonetimKullanicisi = Kullanici & { rol_id: number; aktif: boolean; olusturma_tarihi: string; roller: { ad: string } }
+export type Rol = { id: number; ad: string; aciklama?: string | null }
 
 export type LoginResponse = {
   durum: string

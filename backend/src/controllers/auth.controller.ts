@@ -7,7 +7,8 @@ const prisma = new PrismaClient();
 
 export const login = async (req: Request, res: Response) => {
   try {
-    const { eposta, sifre } = req.body;
+    const eposta = typeof req.body.eposta === "string" ? req.body.eposta.trim().toLowerCase() : "";
+    const sifre = typeof req.body.sifre === "string" ? req.body.sifre : "";
     if (!eposta || !sifre) {
       return res.status(400).json({ mesaj: "eposta ve sifre zorunludur." });
     }

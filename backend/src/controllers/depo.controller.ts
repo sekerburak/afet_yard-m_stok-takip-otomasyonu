@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
+import type { AuthenticatedRequest } from "../middleware/auth.middleware";
 
 const prisma = new PrismaClient();
 
@@ -39,6 +40,19 @@ export const createDepo = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Depo eklenirken hata:", error);
-    res.status(500).json({ mesaj: "Depo eklenirken bir sunucu hatası oluştu.", hata: String(error) });
+    res.status(500).json({ mesaj: "Depo eklenirken bir sunucu hatası oluştu." });
+  }
+};
+
+export const updateDepoDurum = async (req: AuthenticatedRequest, res: Response) => {
+  const id = Number(req.params.id);
+  const aktif = req.body.aktif;
+  if (!Number.isInteger(id) || typeof aktif !== "boolean") return res.status(400).json({ mesaj: "Geçerli depo ve aktif bilgisi gönderilmelidir." });
+  try {
+    const depo = await prisma.depolar.update({ where: { id }, data: { aktif } });
+    return res.json({ durum: "başarılı", mesaj: `Depo ${aktif ? "aktif edildi" : "pasifleştirildi"}.`, veri: depo });
+  } catch (error) {
+    console.error("Depo durumu güncellenirken hata:", error);
+    return res.status(404).json({ mesaj: "Depo bulunamadı." });
   }
 };

@@ -1,13 +1,14 @@
 import { Router } from "express";
-import { getMalzemeler, createMalzeme } from "../controllers/malzeme.controller";
+import { getMalzemeler, createMalzeme, updateMalzemeDurum } from "../controllers/malzeme.controller";
 import { requireAuth, requireRole } from "../middleware/auth.middleware";
 
 const router = Router();
 
 // GET /api/malzemeler -> Tüm malzemeleri listele
-router.get("/", getMalzemeler);
+router.get("/", requireAuth, getMalzemeler);
 
 // POST /api/malzemeler -> Yeni malzeme ekle
 router.post("/", requireAuth, requireRole("Yönetici"), createMalzeme);
+router.patch("/:id/durum", requireAuth, requireRole("Yönetici"), updateMalzemeDurum);
 
 export default router;

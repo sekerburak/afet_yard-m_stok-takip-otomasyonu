@@ -64,6 +64,31 @@ export const createSevkiyat = async (req: AuthenticatedRequest, res: Response) =
     });
   } catch (error) {
     console.error("Sevkiyat eklenirken hata:", error);
-    res.status(500).json({ mesaj: "Sevkiyat eklenirken bir sunucu hatası oluştu.", hata: String(error) });
+    res.status(500).json({ mesaj: "Sevkiyat eklenirken bir sunucu hatası oluştu." });
+  }
+};
+
+export const updateSevkiyatDurum = async (req: AuthenticatedRequest, res: Response) => {
+  const id = Number(req.params.id);
+  const durum = String(req.body.durum ?? "").toUpperCase();
+  const izinliDurumlar = ["HAZIRLANIYOR", "YOLDA", "TESLIM_EDILDI", "IPTAL"];
+
+  if (!Number.isInteger(id) || !izinliDurumlar.includes(durum)) {
+    return res.status(400).json({ mesaj: "Geçerli bir sevkiyat numarası ve durum gönderilmelidir." });
+  }
+
+  try {
+    const sevkiyat = await prisma.sevkiyatlar.update({
+      where: { id },
+      data: {
+        durum,
+        cikis_tarihi: durum === "YOLDA" ? new Date() : undefined,
+        teslim_tarihi: durum === "TESLIM_EDILDI" ? new Date() : undefined,
+      },
+    });
+    return res.json({ durum: "başarılı", mesaj: "Sevkiyat durumu güncellendi.", veri: sevkiyat });
+  } catch (error) {
+    console.error("Sevkiyat durumu güncellenirken hata:", error);
+    return res.status(404).json({ mesaj: "Sevkiyat bulunamadı veya durumu güncellenemedi." });
   }
 };
